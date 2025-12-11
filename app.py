@@ -15,6 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key")
 app.config["DATABASE"] = str(BASE_DIR / "app.db")
+app.config["ADMIN_KEY"] = os.environ.get("ADMIN_KEY", "admin123")  # Change this or set env variable
 
 # In-memory placeholders for prescriptions and reports (demo only).
 PRESCRIPTIONS_STORE = []  # each: {"id": int, "patient_id": int, "doctor": str, "medication": str, "notes": str, "date": str}
@@ -318,9 +319,37 @@ def redirect_by_role(role: str):
     return redirect(url_for("login"))
 
 
+@app.route("/admin-key", methods=["GET", "POST"])
+@require_role("admin")
+def admin_key_entry():
+    """
+    Admin must enter the correct admin key to access the dashboard.
+    """
+    error_message = None
+    
+    if request.method == "POST":
+        entered_key = request.form.get("admin_key", "").strip()
+        
+        if entered_key == app.config["ADMIN_KEY"]:
+            session["admin_key_verified"] = True
+            return redirect(url_for("admin_dashboard"))
+        else:
+            error_message = "Incorrect admin key. Access denied."
+    
+    return render_template(
+        "admin_key_entry.html",
+        user=session.get("user"),
+        error_message=error_message
+    )
+
+
 @app.route("/admin", methods=["GET", "POST"])
 @require_role("admin")
 def admin_dashboard():
+    # Check if admin has verified the key
+    if not session.get("admin_key_verified"):
+        return redirect(url_for("admin_key_entry"))
+    
     success_message = None
     error_message = None
 
@@ -762,6 +791,7 @@ def _get_doctor_name(doctor_id: int) -> str:
 @app.route("/logout")
 def logout():
     user = session.pop("user", None)
+    session.pop("admin_key_verified", None)  # Clear admin key verification
     if user:
         log_action(user["username"], user["role"], "logout", request.path)
     return redirect(url_for("login"))
