@@ -72,29 +72,26 @@ footer { text-align: center; padding: 20px; color: var(--muted); font-size: 14px
         <!-- Patients Section -->
         <div id="patients" class="content-section visible">
             <h3>My Patients</h3>
+            <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; color: #92400e;">
+                ℹ️ Showing patient names only. Click "View Details" to access full information (email, patient ID, medical history).
+            </div>
             <table>
                 <thead>
                     <tr>
-                        <th>First Name</th>
-                        <th>Last Name</th>
-                        <th>Username</th>
-                        <th>Email</th>
+                        <th>Patient Name</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for patient in patients %}
                     <tr>
-                        <td>{{ patient.first_name }}</td>
-                        <td>{{ patient.last_name }}</td>
-                        <td>{{ patient.username }}</td>
-                        <td>{{ patient.email }}</td>
+                        <td><strong>{{ patient.first_name }} {{ patient.last_name }}</strong></td>
                         <td>
-                            <a href="#" style="color: #1d4ed8; font-weight: 600;">View Details</a>
+                            <a href="{{ url_for('patient_details_key_entry', patient_id=patient.id) }}" style="color: #1d4ed8; font-weight: 600; text-decoration: none;">View Details</a>
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="5">No patients assigned yet.</td></tr>
+                    <tr><td colspan="2">No patients assigned yet.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

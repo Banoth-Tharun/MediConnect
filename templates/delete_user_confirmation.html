@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delete User - MedConnect Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #f3f4f6;
+    --card: #ffffff;
+    --primary: #1d4ed8;
+    --text: #0f172a;
+    --muted: #475569;
+    --danger: #dc2626;
+    --shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+* { box-sizing: border-box; }
+body { font-family: "Inter", Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+.container { max-width: 500px; margin: 0 auto; padding: 40px 20px; }
+header { text-align: center; margin-bottom: 32px; }
+header h1 { margin: 0 0 8px; font-size: 28px; font-weight: 700; color: var(--danger); }
+header p { margin: 0; color: var(--muted); font-size: 16px; }
+.card { background: var(--card); border-radius: 14px; padding: 32px; box-shadow: var(--shadow); }
+.warning-banner { background: #fee2e2; border-left: 4px solid var(--danger); padding: 16px; border-radius: 8px; margin-bottom: 24px; }
+.warning-banner h3 { margin: 0 0 8px; color: #991b1b; font-weight: 700; }
+.warning-banner p { margin: 0; color: #7f1d1d; font-size: 14px; line-height: 1.5; }
+.user-info { background: #f0f4ff; border-left: 4px solid var(--primary); padding: 14px; border-radius: 8px; margin-bottom: 24px; }
+.user-info .label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+.user-info .value { font-size: 16px; font-weight: 700; color: var(--primary); margin-top: 4px; margin-bottom: 12px; }
+.user-info .value:last-child { margin-bottom: 0; }
+.security-notice { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 14px; border-radius: 8px; margin-bottom: 24px; font-size: 13px; line-height: 1.5; color: #92400e; }
+.security-notice strong { display: block; margin-bottom: 6px; }
+form { display: flex; flex-direction: column; }
+label { font-weight: 600; margin-bottom: 8px; color: var(--text); font-size: 15px; }
+input[type="password"] { padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; margin-bottom: 20px; transition: 0.2s; }
+input[type="password"]:focus { outline: none; border-color: var(--danger); box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1); }
+button { padding: 12px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: 0.2s; margin-top: 12px; }
+.btn-danger { background: var(--danger); color: white; }
+.btn-danger:hover { background: #b91c1c; }
+.btn-secondary { background: #e5e7eb; color: var(--text); }
+.btn-secondary:hover { background: #d1d5db; }
+.error-message { background: #fee2e2; border-left: 4px solid var(--danger); color: #991b1b; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; font-weight: 500; }
+.hint { font-size: 13px; color: var(--muted); margin-top: 8px; }
+footer { text-align: center; margin-top: 28px; color: var(--muted); font-size: 13px; }
+.button-group { display: flex; gap: 10px; margin-top: 20px; }
+.button-group button { flex: 1; margin: 0; }
+.button-group a { flex: 1; display: flex; align-items: center; justify-content: center; text-decoration: none; padding: 12px; border-radius: 8px; font-weight: 600; transition: 0.2s; }
+a { color: var(--primary); text-decoration: none; font-weight: 600; }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+    <header>
+        <h1>⚠️ Delete User</h1>
+        <p>Confirm user deletion with authorization key</p>
+    </header>
+
+    <div class="card">
+        <div class="warning-banner">
+            <h3>⚠️ Warning: Irreversible Action</h3>
+            <p>Deleting this user will permanently remove all their data from the system. This action cannot be undone. Please be absolutely certain before proceeding.</p>
+        </div>
+
+        <div class="user-info">
+            <div class="label">Username</div>
+            <div class="value">{{ target_username }}</div>
+            <div class="label">Role</div>
+            <div class="value">{{ target_role }}</div>
+            <div class="label">Email</div>
+            <div class="value">{{ target_email }}</div>
+        </div>
+
+        <div class="security-notice">
+            <strong>🔐 Authorization Required</strong>
+            To confirm deletion of this user, please enter the deletion authorization key. This ensures only authorized administrators can delete users.
+        </div>
+
+        {% if error_message %}
+        <div class="error-message">{{ error_message }}</div>
+        {% endif %}
+
+        <form method="POST">
+            <label for="delete_user_key">Deletion Authorization Key</label>
+            <input type="password" id="delete_user_key" name="delete_user_key" placeholder="Enter the deletion key..." autofocus required>
+            <div class="hint">⚙️ Contact your system administrator if you don't have the key</div>
+
+            <div class="button-group">
+                <button type="submit" class="btn-danger">🗑️ Delete User Permanently</button>
+                <a href="{{ url_for('admin_dashboard') }}" class="btn-secondary">← Cancel</a>
+            </div>
+        </form>
+    </div>
+
+    <footer>
+        MedConnect Admin Panel • User deletion is logged and audited
+    </footer>
+</div>
+
+</body>
+</html>

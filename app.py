@@ -10,12 +10,18 @@ from typing import Optional
 from flask import Flask, g, redirect, render_template, request, session, url_for, jsonify, send_file, abort
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from security import RiskScorer, FingerprintManager, SecurityLogger, create_jwt_token
+
 BASE_DIR = Path(__file__).resolve().parent
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key")
 app.config["DATABASE"] = str(BASE_DIR / "app.db")
-app.config["ADMIN_KEY"] = os.environ.get("ADMIN_KEY", "admin123")  # Change this or set env variable
+app.config["ADMIN_KEY"] = os.environ.get("ADMIN_KEY", "admin123")  # Admin dashboard key
+app.config["DOCTOR_VERIFY_KEY"] = os.environ.get("DOCTOR_VERIFY_KEY", "doctor@2024")  # Doctor creation verification key
+app.config["DOCTOR_ACCESS_KEY"] = os.environ.get("DOCTOR_ACCESS_KEY", "secure@doc")  # Doctor access verification key
+app.config["PATIENT_DETAILS_KEY"] = os.environ.get("PATIENT_DETAILS_KEY", "details@verify")  # Patient details access key
+app.config["DELETE_USER_KEY"] = os.environ.get("DELETE_USER_KEY", "delete@user")  # User deletion confirmation key
 
 # In-memory placeholders for prescriptions and reports (demo only).
 PRESCRIPTIONS_STORE = []  # each: {"id": int, "patient_id": int, "doctor": str, "medication": str, "notes": str, "date": str}
@@ -134,27 +140,159 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        
+        # Get fingerprint and device info from form
+        fingerprint = request.form.get("fingerprint", "unknown")
+        device_os = request.form.get("device_os", "Unknown")
+        device_browser = request.form.get("device_browser", "Unknown")
+        
+        # Get IP address
+        ip_address = request.remote_addr or "unknown"
+        
         user = load_user(username)
-
+        
+        # Initialize security components
+        db = get_db()
+        risk_scorer = RiskScorer(db)
+        fingerprint_mgr = FingerprintManager(db)
+        security_logger = SecurityLogger(db)
+        
+        # Calculate risk score
+        user_id = user['id'] if user else None
+        risk_assessment = risk_scorer.calculate_risk(
+            user_id, username, fingerprint, ip_address,
+            device_browser, device_os
+        )
+        
         if user and check_password_hash(user["password_hash"], password):
+            # Log successful login attempt with risk score
+            security_logger.log_login_attempt(
+                username, user_id, fingerprint, ip_address,
+                device_browser, device_os, success=True,
+                risk_score=risk_assessment['risk_score'],
+                risk_factors=risk_assessment['factors']
+            )
+            
+            # Update user's last login info
+            db.execute("""
+                UPDATE users 
+                SET last_login_ip = ?, last_login_time = ?, last_known_fingerprint = ?
+                WHERE id = ?
+            """, (ip_address, datetime.now(timezone.utc).isoformat(), fingerprint, user_id))
+            db.commit()
+            
+            # Register or update fingerprint
+            fingerprint_mgr.register_fingerprint(
+                user_id, fingerprint,
+                f"{device_browser} on {device_os}",
+                device_browser, device_os, ip_address
+            )
+            
             if user["is_verified"] == 0:
                 error = "Please verify your email before logging in."
+                # Log failed verification
+                security_logger.log_security_event(
+                    username, user_id, "login_unverified", "medium",
+                    ip_address, fingerprint, {"reason": "email_not_verified"}
+                )
             elif user["role"] == "doctor":
-                # For doctors, generate OTP and send it
-                if user["email"]:
-                    otp = create_otp_token(user["email"])
-                    send_otp_email(user["email"], otp)
+                # For doctors, check risk level and generate OTP
+                if risk_assessment['risk_level'] in ['medium', 'high']:
+                    # High risk: require OTP challenge
                     session["pending_login_username"] = username
                     session["pending_login_email"] = user["email"]
                     session["pending_login_role"] = "doctor"
-                    return redirect(url_for("verify_login_otp"))
+                    session["pending_login_risk_score"] = risk_assessment['risk_score']
+                    session["pending_login_fingerprint"] = fingerprint
+                    session["pending_login_ip"] = ip_address
+                    session["risk_challenge_reason"] = risk_assessment['recommendation']
+                    
+                    # Log security event
+                    security_logger.log_security_event(
+                        username, user_id, "login_high_risk", risk_assessment['risk_level'],
+                        ip_address, fingerprint,
+                        {"risk_score": risk_assessment['risk_score'],
+                         "factors": risk_assessment['factors']}
+                    )
+                    
+                    if user["email"]:
+                        otp = create_otp_token(user["email"])
+                        send_otp_email(user["email"], otp)
+                        
+                        # Log challenge issued
+                        security_logger.log_login_attempt(
+                            username, user_id, fingerprint, ip_address,
+                            device_browser, device_os, success=None,
+                            risk_score=risk_assessment['risk_score'],
+                            risk_factors=risk_assessment['factors'],
+                            challenge_type="otp_doctor"
+                        )
+                        
+                        return redirect(url_for("verify_login_otp"))
+                    else:
+                        error = "Doctor account does not have an email set."
                 else:
-                    error = "Doctor account does not have an email set."
+                    # Low risk: Generate OTP normally
+                    if user["email"]:
+                        otp = create_otp_token(user["email"])
+                        send_otp_email(user["email"], otp)
+                        session["pending_login_username"] = username
+                        session["pending_login_email"] = user["email"]
+                        session["pending_login_role"] = "doctor"
+                        return redirect(url_for("verify_login_otp"))
+                    else:
+                        error = "Doctor account does not have an email set."
             else:
-                session["user"] = {"username": user["username"], "role": user["role"]}
-                log_action(user["username"], user["role"], "login", request.path)
-                return redirect_by_role(user["role"])
+                # Patient or Admin
+                if risk_assessment['risk_level'] == 'high':
+                    # Block high-risk logins for patient/admin
+                    error = "Login blocked due to suspicious activity. Please contact support."
+                    
+                    security_logger.log_security_event(
+                        username, user_id, "login_blocked", "high",
+                        ip_address, fingerprint,
+                        {"reason": "high_risk_score",
+                         "risk_score": risk_assessment['risk_score']}
+                    )
+                elif risk_assessment['risk_level'] == 'medium':
+                    # Challenge with OTP for medium risk
+                    session["pending_login_username"] = username
+                    session["pending_login_email"] = user["email"]
+                    session["pending_login_role"] = user["role"]
+                    session["pending_login_fingerprint"] = fingerprint
+                    session["pending_login_ip"] = ip_address
+                    
+                    security_logger.log_security_event(
+                        username, user_id, "login_medium_risk", "medium",
+                        ip_address, fingerprint,
+                        {"risk_score": risk_assessment['risk_score']}
+                    )
+                    
+                    if user["email"]:
+                        otp = create_otp_token(user["email"])
+                        send_otp_email(user["email"], otp)
+                        return redirect(url_for("verify_login_otp"))
+                else:
+                    # Low risk: allow login
+                    session["user"] = {"username": user["username"], "role": user["role"]}
+                    log_action(user["username"], user["role"], "login", request.path)
+                    
+                    security_logger.log_security_event(
+                        username, user_id, "login_success", "low",
+                        ip_address, fingerprint,
+                        {"risk_score": risk_assessment['risk_score']}
+                    )
+                    
+                    return redirect_by_role(user["role"])
         else:
+            # Failed login - log attempt
+            security_logger.log_login_attempt(
+                username, user_id, fingerprint, ip_address,
+                device_browser, device_os, success=False,
+                risk_score=risk_assessment['risk_score'],
+                risk_factors=risk_assessment['factors']
+            )
+            
             error = "Invalid username or password"
 
     return render_template("login.html", error=error)
@@ -276,37 +414,90 @@ def verify_otp_page():
 
 @app.route("/verify-login-otp", methods=["GET", "POST"])
 def verify_login_otp():
-    """OTP verification during doctor login."""
+    """OTP verification during doctor login and high-risk challenges."""
     username = session.get("pending_login_username")
     email = session.get("pending_login_email")
     role = session.get("pending_login_role")
+    risk_score = session.get("pending_login_risk_score")
+    fingerprint = session.get("pending_login_fingerprint")
+    ip_address = session.get("pending_login_ip")
     
-    if not username or not email or role != "doctor":
+    if not username or not email:
         return redirect(url_for("login"))
     
     error = None
+    challenge_reason = "Doctor OTP Verification"
+    
+    # Check if this is a risk-based challenge
+    if risk_score is not None:
+        challenge_reason = f"Security Challenge (Risk Level: {session.get('risk_challenge_reason', 'medium')})"
     
     if request.method == "POST":
         otp_code = request.form.get("otp_code", "").strip()
+        trust_device = request.form.get("trust_device") == "on"
         
         if not otp_code:
             error = "OTP is required."
         elif verify_otp(email, otp_code):
-            # Log in the doctor
-            session["user"] = {"username": username, "role": "doctor"}
-            log_action(username, "doctor", "login_with_otp", request.path)
+            # Log successful OTP verification
+            db = get_db()
+            security_logger = SecurityLogger(db)
+            user = load_user(username)
+            user_id = user['id'] if user else None
+            
+            security_logger.log_security_event(
+                username, user_id, "otp_challenge_passed", "low",
+                ip_address, fingerprint,
+                {"challenge_reason": challenge_reason, "trust_device": trust_device}
+            )
+            
+            # If device should be trusted, mark it
+            if trust_device and user_id and fingerprint:
+                fingerprint_mgr = FingerprintManager(db)
+                fingerprint_mgr.trust_device(user_id, fingerprint, duration_days=30)
+                
+                security_logger.log_security_event(
+                    username, user_id, "device_trusted", "low",
+                    ip_address, fingerprint,
+                    {"duration_days": 30}
+                )
+            
+            # Create session for user
+            session["user"] = {"username": username, "role": role}
+            log_action(username, role, "login_with_otp_challenge", request.path)
             
             # Clear session data
             session.pop("pending_login_username", None)
             session.pop("pending_login_email", None)
             session.pop("pending_login_role", None)
+            session.pop("pending_login_risk_score", None)
+            session.pop("pending_login_fingerprint", None)
+            session.pop("pending_login_ip", None)
+            session.pop("risk_challenge_reason", None)
             
-            # Redirect to doctor dashboard
-            return redirect(url_for("doctor_dashboard"))
+            # Redirect to appropriate dashboard
+            return redirect_by_role(role)
         else:
             error = "Invalid or expired OTP. Please try again."
+            
+            # Log failed OTP verification
+            if risk_score is not None:
+                db = get_db()
+                security_logger = SecurityLogger(db)
+                user = load_user(username)
+                user_id = user['id'] if user else None
+                
+                security_logger.log_security_event(
+                    username, user_id, "otp_challenge_failed", "medium",
+                    ip_address, fingerprint,
+                    {"attempt": "wrong_otp"}
+                )
     
-    return render_template("verify_login_otp.html", email=email, error=error)
+    return render_template("verify_login_otp.html", 
+                         email=email, 
+                         error=error,
+                         challenge_reason=challenge_reason,
+                         risk_score=risk_score)
 
 
 def redirect_by_role(role: str):
@@ -357,11 +548,17 @@ def admin_dashboard():
         username = request.form.get("doctor_username", "").strip()
         email = request.form.get("doctor_email", "").strip()
         password = request.form.get("doctor_password", "")
+        doctor_verify_key = request.form.get("doctor_verify_key", "").strip()
 
         if not username or not email or not password:
             error_message = "Username, email, and password are required to add a doctor."
         elif "@" not in email:
             error_message = "Please enter a valid email address."
+        elif not doctor_verify_key:
+            error_message = "Doctor verification key is required."
+        elif doctor_verify_key != app.config["DOCTOR_VERIFY_KEY"]:
+            error_message = "❌ Incorrect doctor verification key. Doctor not created."
+            log_action(session["user"]["username"], session["user"]["role"], "failed_doctor_creation_key", request.path)
         else:
             try:
                 hashed = generate_password_hash(password)
@@ -372,7 +569,7 @@ def admin_dashboard():
                 )
                 conn.commit()
                 log_action(session["user"]["username"], session["user"]["role"], "create_doctor", request.path)
-                success_message = f"Doctor '{username}' added successfully with email {email}."
+                success_message = f"✅ Doctor '{username}' created successfully with email {email}."
             except sqlite3.IntegrityError:
                 error_message = "Username already exists. Choose another."
 
@@ -404,9 +601,156 @@ def admin_dashboard():
     )
 
 
+@app.route("/delete-user/<int:user_id>", methods=["GET", "POST"])
+@require_role("admin")
+def delete_user_key_entry(user_id):
+    """
+    Admin must enter delete confirmation key to delete a user
+    """
+    if not session.get("admin_key_verified"):
+        return redirect(url_for("admin_key_entry"))
+    
+    # Get user info
+    conn = get_db()
+    user_row = conn.execute("SELECT id, username, role, email FROM users WHERE id = ?", (user_id,)).fetchone()
+    
+    if not user_row:
+        return "User not found", 404
+    
+    error_message = None
+    
+    if request.method == "POST":
+        entered_key = request.form.get("delete_user_key", "").strip()
+        
+        if entered_key == app.config["DELETE_USER_KEY"]:
+            # Delete the user
+            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            conn.commit()
+            log_action(session["user"]["username"], "admin", f"deleted_user_{user_row['username']}", request.path)
+            return redirect(url_for("admin_dashboard"))
+        else:
+            error_message = "❌ Incorrect deletion confirmation key. User not deleted."
+            log_action(session["user"]["username"], "admin", f"failed_delete_user_{user_id}", request.path)
+    
+    return render_template(
+        "delete_user_confirmation.html",
+        user=session.get("user"),
+        target_user_id=user_id,
+        target_username=user_row["username"],
+        target_role=user_row["role"],
+        target_email=user_row["email"],
+        error_message=error_message
+    )
+
+
+@app.route("/doctor-key", methods=["GET", "POST"])
+@require_role("doctor")
+def doctor_key_entry():
+    """
+    Doctor must enter the correct access key to view patient details.
+    """
+    error_message = None
+    
+    if request.method == "POST":
+        entered_key = request.form.get("doctor_access_key", "").strip()
+        
+        if entered_key == app.config["DOCTOR_ACCESS_KEY"]:
+            session["doctor_key_verified"] = True
+            log_action(session["user"]["username"], "doctor", "doctor_key_verified", request.path)
+            return redirect(url_for("doctor_dashboard"))
+        else:
+            error_message = "❌ Incorrect doctor access key. Access denied."
+            log_action(session["user"]["username"], "doctor", "failed_doctor_key_attempt", request.path)
+    
+    return render_template(
+        "doctor_key_entry.html",
+        user=session.get("user"),
+        error_message=error_message
+    )
+
+
+@app.route("/patient-details-key/<int:patient_id>", methods=["GET", "POST"])
+@require_role("doctor")
+def patient_details_key_entry(patient_id):
+    """
+    Doctor must enter key to view full patient details (email, etc.)
+    """
+    if not session.get("doctor_key_verified"):
+        return redirect(url_for("doctor_key_entry"))
+    
+    # Get patient info
+    conn = get_db()
+    patient_row = conn.execute("SELECT id, username, email, first_name, last_name FROM users WHERE id = ? AND role = 'patient'", (patient_id,)).fetchone()
+    
+    if not patient_row:
+        return "Patient not found", 404
+    
+    error_message = None
+    
+    if request.method == "POST":
+        entered_key = request.form.get("patient_details_key", "").strip()
+        
+        if entered_key == app.config["PATIENT_DETAILS_KEY"]:
+            # Set verification for this specific patient in session
+            if "patient_details_verified" not in session:
+                session["patient_details_verified"] = {}
+            session["patient_details_verified"][str(patient_id)] = True
+            session.modified = True
+            log_action(session["user"]["username"], "doctor", f"verified_patient_details_{patient_id}", request.path)
+            return redirect(url_for("view_patient_details", patient_id=patient_id))
+        else:
+            error_message = "❌ Incorrect details access key. Access denied."
+            log_action(session["user"]["username"], "doctor", f"failed_patient_details_key_{patient_id}", request.path)
+    
+    return render_template(
+        "patient_details_key_entry.html",
+        user=session.get("user"),
+        patient_name=f"{patient_row['first_name']} {patient_row['last_name']}" if patient_row['first_name'] and patient_row['last_name'] else patient_row['username'],
+        patient_id=patient_id,
+        error_message=error_message
+    )
+
+
+@app.route("/patient-details/<int:patient_id>")
+@require_role("doctor")
+def view_patient_details(patient_id):
+    """
+    Display full patient details (only if key verified)
+    """
+    if not session.get("doctor_key_verified"):
+        return redirect(url_for("doctor_key_entry"))
+    
+    # Check if doctor has verified details access for this patient
+    patient_details_verified = session.get("patient_details_verified", {})
+    if str(patient_id) not in patient_details_verified:
+        return redirect(url_for("patient_details_key_entry", patient_id=patient_id))
+    
+    # Get patient details
+    conn = get_db()
+    patient_row = conn.execute("SELECT id, username, email, first_name, last_name FROM users WHERE id = ? AND role = 'patient'", (patient_id,)).fetchone()
+    
+    if not patient_row:
+        return "Patient not found", 404
+    
+    return render_template(
+        "patient_details_view.html",
+        user=session.get("user"),
+        patient_id=patient_row["id"],
+        patient_username=patient_row["username"],
+        patient_email=patient_row["email"] or "N/A",
+        patient_first_name=patient_row["first_name"] or "N/A",
+        patient_last_name=patient_row["last_name"] or "N/A",
+        session_id=session.get("user", {}).get("username", "unknown")
+    )
+
+
 @app.route("/doctor")
 @require_role("doctor")
 def doctor_dashboard():
+    # Check if doctor has verified the key
+    if not session.get("doctor_key_verified"):
+        return redirect(url_for("doctor_key_entry"))
+    
     # Fetch all patients with their details from the database
     conn = get_db()
     patient_rows = conn.execute("SELECT id, username, email, first_name, last_name FROM users WHERE role = 'patient'").fetchall()
@@ -792,6 +1136,7 @@ def _get_doctor_name(doctor_id: int) -> str:
 def logout():
     user = session.pop("user", None)
     session.pop("admin_key_verified", None)  # Clear admin key verification
+    session.pop("doctor_key_verified", None)  # Clear doctor key verification
     if user:
         log_action(user["username"], user["role"], "logout", request.path)
     return redirect(url_for("login"))

@@ -107,7 +107,13 @@
                         <input type="password" name="doctor_password" placeholder="Temporary password" required>
                         <input type="email" name="doctor_email" placeholder="Doctor email address" required>
                     </div>
-                    <button type="submit" class="primary">Create Doctor</button>
+                    <div style="margin-top: 12px; padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 5px;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #92400e;">🔐 Doctor Verification Key</label>
+                        <input type="password" name="doctor_verify_key" placeholder="Enter doctor verification key" required 
+                            style="width: 100%; padding: 10px; border: 1px solid #fcd34d; border-radius: 4px; font-size: 14px;">
+                        <small style="color: #b45309; display: block; margin-top: 6px;">Required to verify and create the doctor account</small>
+                    </div>
+                    <button type="submit" class="primary" style="margin-top: 14px;">Create Doctor</button>
                 </form>
             </div>
         </div>
@@ -122,6 +128,7 @@
                                 <th>ID</th>
                                 <th>Username</th>
                                 <th>Role</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -134,9 +141,12 @@
                                         {{ u.role|title }}
                                     </span>
                                 </td>
+                                <td>
+                                    <a href="{{ url_for('delete_user_key_entry', user_id=u.id) }}" style="color: #dc2626; font-weight: 600;">🗑️ Delete</a>
+                                </td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="3" style="text-align:center; padding:16px;">No users found.</td></tr>
+                            <tr><td colspan="4" style="text-align:center; padding:16px;">No users found.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doctor Access Verification - MediConnect</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .key-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        .key-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .key-header h2 {
+            color: #06b6d4;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .key-header p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .doctor-info {
+            background: #f0f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border-left: 4px solid #06b6d4;
+            font-size: 13px;
+            color: #0c4a6e;
+        }
+        
+        .doctor-info strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: block;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #06b6d4;
+            box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+        }
+        
+        .btn-verify {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-top: 10px;
+        }
+        
+        .btn-verify:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(6, 182, 212, 0.4);
+            color: white;
+            text-decoration: none;
+        }
+        
+        .btn-verify:active {
+            transform: translateY(0);
+        }
+        
+        .error-message {
+            background-color: #fee2e2;
+            color: #991b1b;
+            padding: 12px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #fecaca;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .error-message::before {
+            content: "⚠️";
+            font-size: 18px;
+        }
+        
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .back-link a {
+            color: #06b6d4;
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.3s ease;
+        }
+        
+        .back-link a:hover {
+            color: #0891b2;
+            text-decoration: underline;
+        }
+        
+        .security-info {
+            background: #cffafe;
+            border-left: 4px solid #06b6d4;
+            padding: 12px;
+            border-radius: 5px;
+            margin-top: 20px;
+            font-size: 13px;
+            color: #0c4a6e;
+        }
+        
+        .security-info strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="key-container">
+        <div class="key-header">
+            <h2>🔐 Doctor Access Verification</h2>
+            <p>Enter your access key to view patient details</p>
+        </div>
+        
+        <div class="doctor-info">
+            <strong>👨‍⚕️ Logged in as:</strong>
+            {{ user.username if user else 'Unknown' }}
+        </div>
+        
+        {% if error_message %}
+        <div class="error-message">
+            {{ error_message }}
+        </div>
+        {% endif %}
+        
+        <form method="POST" action="{{ url_for('doctor_key_entry') }}">
+            <div class="form-group">
+                <label for="doctor_access_key">Access Key</label>
+                <input 
+                    type="password" 
+                    id="doctor_access_key" 
+                    name="doctor_access_key" 
+                    placeholder="Enter your access key" 
+                    required 
+                    autocomplete="off"
+                    autofocus
+                >
+            </div>
+            
+            <button type="submit" class="btn-verify">Verify & Access Patients</button>
+        </form>
+        
+        <div class="security-info">
+            <strong>🛡️ Security Notice:</strong>
+            Your access key protects patient data. 
+            Each access attempt is logged for audit purposes.
+        </div>
+        
+        <div class="back-link">
+            <a href="{{ url_for('logout') }}">
+                ← Logout
+            </a>
+        </div>
+    </div>
+</body>
+</html>

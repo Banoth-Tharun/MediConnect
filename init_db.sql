@@ -1,4 +1,7 @@
  -- SQLite schema and seed data
+DROP TABLE IF EXISTS login_attempts;
+DROP TABLE IF EXISTS device_fingerprints;
+DROP TABLE IF EXISTS security_logs;
 DROP TABLE IF EXISTS logs;
 DROP TABLE IF EXISTS appointments;
 DROP TABLE IF EXISTS otp_tokens;
@@ -12,7 +15,10 @@ CREATE TABLE users (
     email TEXT,
     first_name TEXT,
     last_name TEXT,
-    is_verified INTEGER DEFAULT 0
+    is_verified INTEGER DEFAULT 0,
+    last_login_ip TEXT,
+    last_login_time TEXT,
+    last_known_fingerprint TEXT
 );
 
 CREATE TABLE otp_tokens (
@@ -43,6 +49,51 @@ CREATE TABLE logs (
     role TEXT NOT NULL,
     action TEXT NOT NULL,
     endpoint TEXT NOT NULL
+);
+
+CREATE TABLE device_fingerprints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    device_name TEXT,
+    browser TEXT,
+    os TEXT,
+    ip_address TEXT,
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    is_trusted INTEGER DEFAULT 0,
+    trust_expires_at TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE login_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    username TEXT NOT NULL,
+    fingerprint TEXT,
+    ip_address TEXT NOT NULL,
+    browser TEXT,
+    os TEXT,
+    success INTEGER NOT NULL,
+    risk_score REAL DEFAULT 0.0,
+    risk_factors TEXT,
+    jwt_token TEXT,
+    timestamp TEXT NOT NULL,
+    challenge_type TEXT,
+    challenge_passed INTEGER DEFAULT NULL
+);
+
+CREATE TABLE security_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    username TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    risk_level TEXT,
+    ip_address TEXT,
+    fingerprint TEXT,
+    details TEXT,
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 -- All three users share the same password: password@123
