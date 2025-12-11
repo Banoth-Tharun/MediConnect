@@ -98,7 +98,7 @@ CREATE TABLE security_logs (
 
 -- All three users share the same password: password@123
 INSERT INTO users (username, password_hash, role, email, is_verified) VALUES
-('admin1', 'scrypt:32768:8:1$u2F8w3Ie918HeqMx$cba50b4b0abe7aa3e23d1b758dbd9231c17860f31a79785ad2fde8936ed787d51543ce97417046c31f8284791b6b9e636a54de17f00f59102b96eb782fdf05a4', 'admin', NULL, 1),
+('Tharun Admin', 'scrypt:32768:8:1$u2F8w3Ie918HeqMx$cba50b4b0abe7aa3e23d1b758dbd9231c17860f31a79785ad2fde8936ed787d51543ce97417046c31f8284791b6b9e636a54de17f00f59102b96eb782fdf05a4', 'admin', NULL, 1),
 ('doctor1', 'scrypt:32768:8:1$u2F8w3Ie918HeqMx$cba50b4b0abe7aa3e23d1b758dbd9231c17860f31a79785ad2fde8936ed787d51543ce97417046c31f8284791b6b9e636a54de17f00f59102b96eb782fdf05a4', 'doctor', 'doctor1@hospital.com', 1),
 ('patient1', 'scrypt:32768:8:1$u2F8w3Ie918HeqMx$cba50b4b0abe7aa3e23d1b758dbd9231c17860f31a79785ad2fde8936ed787d51543ce97417046c31f8284791b6b9e636a54de17f00f59102b96eb782fdf05a4', 'patient', 'patient1@example.com', 1);
 

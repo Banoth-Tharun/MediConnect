@@ -11,6 +11,355 @@ from typing import Dict, Tuple, Optional, List
 from functools import lru_cache
 
 
+class PredictiveRiskAnalyzer:
+    """
+    Analyze historical fingerprints and login attempts to predict risk scores
+    Uses pattern recognition without requiring ML libraries
+    """
+    
+    def __init__(self, db_connection: sqlite3.Connection):
+        self.db = db_connection
+        self.db.row_factory = sqlite3.Row
+    
+    def analyze_fingerprint_pattern(self, user_id: int, fingerprint: str, 
+                                   ip_address: str) -> Dict:
+        """
+        Analyze fingerprint history and patterns
+        Returns prediction factors for risk scoring
+        """
+        cursor = self.db.cursor()
+        
+        # Get all previous logins for this user
+        cursor.execute("""
+            SELECT fingerprint, ip_address, success, risk_score, timestamp
+            FROM login_attempts
+            WHERE user_id = ?
+            ORDER BY timestamp DESC
+            LIMIT 50
+        """, (user_id,))
+        
+        history = [dict(row) for row in cursor.fetchall()]
+        
+        analysis = {
+            'fingerprint_frequency': self._analyze_fingerprint_frequency(fingerprint, history),
+            'ip_pattern': self._analyze_ip_pattern(ip_address, history),
+            'success_rate': self._calculate_success_rate(history),
+            'device_reliability': self._calculate_device_reliability(fingerprint, history),
+            'ip_reliability': self._calculate_ip_reliability(ip_address, history),
+            'anomaly_score': self._detect_anomalies(fingerprint, ip_address, history),
+            'trusted_combination': self._check_trusted_combination(fingerprint, ip_address, history)
+        }
+        
+        return analysis
+    
+    def _analyze_fingerprint_frequency(self, fingerprint: str, history: List[Dict]) -> Dict:
+        """
+        Analyze how often this fingerprint appears in history
+        More frequent = more trusted
+        """
+        if not history:
+            return {'status': 'new_fingerprint', 'frequency': 0, 'prediction': 'high_risk'}
+        
+        fp_count = sum(1 for h in history if h['fingerprint'] == fingerprint)
+        total_logins = len(history)
+        frequency = fp_count / total_logins if total_logins > 0 else 0
+        
+        if frequency >= 0.8:  # Used in 80%+ of logins
+            return {'status': 'primary_device', 'frequency': frequency, 'prediction': 'low_risk'}
+        elif frequency >= 0.5:  # Used in 50%+ of logins
+            return {'status': 'regular_device', 'frequency': frequency, 'prediction': 'medium_risk'}
+        elif frequency > 0:  # Used occasionally
+            return {'status': 'occasional_device', 'frequency': frequency, 'prediction': 'medium_risk'}
+        else:  # Never seen before
+            return {'status': 'new_device', 'frequency': 0, 'prediction': 'high_risk'}
+    
+    def _analyze_ip_pattern(self, ip_address: str, history: List[Dict]) -> Dict:
+        """
+        Analyze IP address usage patterns
+        Regular IPs = trusted, frequent changes = suspicious
+        """
+        if not history:
+            return {'status': 'new_ip', 'frequency': 0, 'prediction': 'high_risk'}
+        
+        ip_count = sum(1 for h in history if h['ip_address'] == ip_address)
+        total_logins = len(history)
+        frequency = ip_count / total_logins if total_logins > 0 else 0
+        
+        # Get unique IPs in last 30 days
+        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        recent_ips = set()
+        for h in history:
+            if h['timestamp'] > thirty_days_ago:
+                recent_ips.add(h['ip_address'])
+        
+        if frequency >= 0.7:  # Used in 70%+ of logins
+            return {
+                'status': 'primary_ip',
+                'frequency': frequency,
+                'unique_ips_30d': len(recent_ips),
+                'prediction': 'low_risk'
+            }
+        elif len(recent_ips) > 10:  # More than 10 IPs in 30 days
+            return {
+                'status': 'ip_hopper',
+                'frequency': frequency,
+                'unique_ips_30d': len(recent_ips),
+                'prediction': 'high_risk'
+            }
+        elif frequency > 0:
+            return {
+                'status': 'known_ip',
+                'frequency': frequency,
+                'unique_ips_30d': len(recent_ips),
+                'prediction': 'medium_risk'
+            }
+        else:
+            return {
+                'status': 'new_ip',
+                'frequency': 0,
+                'unique_ips_30d': len(recent_ips),
+                'prediction': 'high_risk'
+            }
+    
+    def _calculate_success_rate(self, history: List[Dict]) -> Dict:
+        """
+        Calculate login success rate
+        High success = trustworthy account
+        """
+        if not history:
+            return {'success_rate': 0, 'total_attempts': 0, 'prediction': 'unknown'}
+        
+        successes = sum(1 for h in history if h['success'] == 1)
+        total = len(history)
+        rate = successes / total if total > 0 else 0
+        
+        if rate >= 0.95:  # 95%+ success
+            return {'success_rate': rate, 'total_attempts': total, 'prediction': 'low_risk'}
+        elif rate >= 0.80:  # 80%+ success
+            return {'success_rate': rate, 'total_attempts': total, 'prediction': 'medium_risk'}
+        elif rate >= 0.50:  # 50%+ success
+            return {'success_rate': rate, 'total_attempts': total, 'prediction': 'high_risk'}
+        else:  # Low success rate
+            return {'success_rate': rate, 'total_attempts': total, 'prediction': 'very_high_risk'}
+    
+    def _calculate_device_reliability(self, fingerprint: str, history: List[Dict]) -> Dict:
+        """
+        Calculate how reliable a device is based on past logins
+        """
+        device_attempts = [h for h in history if h['fingerprint'] == fingerprint]
+        
+        if not device_attempts:
+            return {'reliability': 0, 'attempts': 0, 'avg_risk': 0, 'prediction': 'unknown'}
+        
+        successes = sum(1 for h in device_attempts if h['success'] == 1)
+        rate = successes / len(device_attempts)
+        avg_risk = sum(h['risk_score'] for h in device_attempts) / len(device_attempts)
+        
+        if rate >= 0.90 and avg_risk < 30:  # Reliable and low-risk
+            return {
+                'reliability': rate,
+                'attempts': len(device_attempts),
+                'avg_risk': round(avg_risk, 2),
+                'prediction': 'very_low_risk'
+            }
+        elif rate >= 0.70 and avg_risk < 50:
+            return {
+                'reliability': rate,
+                'attempts': len(device_attempts),
+                'avg_risk': round(avg_risk, 2),
+                'prediction': 'low_risk'
+            }
+        elif avg_risk > 70:  # High-risk device
+            return {
+                'reliability': rate,
+                'attempts': len(device_attempts),
+                'avg_risk': round(avg_risk, 2),
+                'prediction': 'high_risk'
+            }
+        else:
+            return {
+                'reliability': rate,
+                'attempts': len(device_attempts),
+                'avg_risk': round(avg_risk, 2),
+                'prediction': 'medium_risk'
+            }
+    
+    def _calculate_ip_reliability(self, ip_address: str, history: List[Dict]) -> Dict:
+        """
+        Calculate how reliable an IP address is based on past logins
+        """
+        ip_attempts = [h for h in history if h['ip_address'] == ip_address]
+        
+        if not ip_attempts:
+            return {'reliability': 0, 'attempts': 0, 'avg_risk': 0, 'prediction': 'unknown'}
+        
+        successes = sum(1 for h in ip_attempts if h['success'] == 1)
+        rate = successes / len(ip_attempts)
+        avg_risk = sum(h['risk_score'] for h in ip_attempts) / len(ip_attempts)
+        
+        if rate >= 0.90 and avg_risk < 30:
+            return {
+                'reliability': rate,
+                'attempts': len(ip_attempts),
+                'avg_risk': round(avg_risk, 2),
+                'prediction': 'very_low_risk'
+            }
+        elif avg_risk > 60:
+            return {
+                'reliability': rate,
+                'attempts': len(ip_attempts),
+                'avg_risk': round(avg_risk, 2),
+                'prediction': 'high_risk'
+            }
+        else:
+            return {
+                'reliability': rate,
+                'attempts': len(ip_attempts),
+                'avg_risk': round(avg_risk, 2),
+                'prediction': 'medium_risk'
+            }
+    
+    def _detect_anomalies(self, fingerprint: str, ip_address: str, history: List[Dict]) -> Dict:
+        """
+        Detect anomalies in login patterns
+        """
+        if not history:
+            return {'anomalies': [], 'anomaly_score': 0, 'prediction': 'unknown'}
+        
+        anomalies = []
+        anomaly_score = 0
+        
+        # Check for new device + new IP combination
+        combo_exists = any(
+            h['fingerprint'] == fingerprint and h['ip_address'] == ip_address 
+            for h in history
+        )
+        if not combo_exists:
+            anomalies.append('new_device_ip_combination')
+            anomaly_score += 20
+        
+        # Check for rapid IP changes
+        if len(history) >= 3:
+            recent_ips = [h['ip_address'] for h in history[:3]]
+            if len(set(recent_ips)) == 3:  # 3 different IPs in last 3 logins
+                anomalies.append('rapid_ip_changes')
+                anomaly_score += 25
+        
+        # Check for multiple devices in short time
+        if len(history) >= 5:
+            recent_fps = [h['fingerprint'] for h in history[:5]]
+            if len(set(recent_fps)) >= 4:  # 4+ devices in last 5 logins
+                anomalies.append('multiple_devices_short_time')
+                anomaly_score += 20
+        
+        # Check for unusual login time
+        current_hour = datetime.now(timezone.utc).hour
+        if history:
+            typical_hours = set(
+                datetime.fromisoformat(h['timestamp']).hour 
+                for h in history[:10]
+            )
+            if current_hour not in typical_hours and len(typical_hours) >= 3:
+                anomalies.append('unusual_login_hour')
+                anomaly_score += 15
+        
+        # Normalize score
+        anomaly_score = min(100, anomaly_score)
+        
+        if anomaly_score > 60:
+            prediction = 'high_risk'
+        elif anomaly_score > 30:
+            prediction = 'medium_risk'
+        else:
+            prediction = 'low_risk'
+        
+        return {
+            'anomalies': anomalies,
+            'anomaly_score': anomaly_score,
+            'prediction': prediction
+        }
+    
+    def _check_trusted_combination(self, fingerprint: str, ip_address: str, 
+                                   history: List[Dict]) -> Dict:
+        """
+        Check if this fingerprint+IP combination has successful logins
+        """
+        combo_logins = [
+            h for h in history 
+            if h['fingerprint'] == fingerprint and h['ip_address'] == ip_address
+        ]
+        
+        if not combo_logins:
+            return {
+                'combo_seen_before': False,
+                'combo_successes': 0,
+                'prediction': 'unknown'
+            }
+        
+        successes = sum(1 for h in combo_logins if h['success'] == 1)
+        total = len(combo_logins)
+        
+        if successes >= total * 0.9:  # 90%+ success with this combo
+            return {
+                'combo_seen_before': True,
+                'combo_attempts': total,
+                'combo_successes': successes,
+                'combo_reliability': successes / total,
+                'prediction': 'low_risk'
+            }
+        else:
+            return {
+                'combo_seen_before': True,
+                'combo_attempts': total,
+                'combo_successes': successes,
+                'combo_reliability': successes / total,
+                'prediction': 'medium_risk'
+            }
+    
+    def predict_risk_adjustment(self, analysis: Dict) -> float:
+        """
+        Predict a risk score adjustment based on historical analysis
+        Returns a value -30 to +30 to adjust base risk score
+        """
+        adjustments = []
+        
+        # Fingerprint pattern
+        fp_pred = analysis.get('fingerprint_frequency', {}).get('prediction', 'medium_risk')
+        if fp_pred == 'low_risk':
+            adjustments.append(-15)
+        elif fp_pred == 'high_risk':
+            adjustments.append(+15)
+        
+        # IP pattern
+        ip_pred = analysis.get('ip_pattern', {}).get('prediction', 'medium_risk')
+        if ip_pred == 'low_risk':
+            adjustments.append(-12)
+        elif ip_pred == 'high_risk' or ip_pred == 'ip_hopper':
+            adjustments.append(+18)
+        
+        # Success rate
+        success_pred = analysis.get('success_rate', {}).get('prediction', 'unknown')
+        if success_pred == 'low_risk':
+            adjustments.append(-10)
+        elif success_pred == 'very_high_risk':
+            adjustments.append(+20)
+        
+        # Device reliability
+        device_pred = analysis.get('device_reliability', {}).get('prediction', 'unknown')
+        if device_pred == 'very_low_risk':
+            adjustments.append(-12)
+        elif device_pred == 'high_risk':
+            adjustments.append(+15)
+        
+        # Anomaly score
+        anomaly_score = analysis.get('anomaly_score', {}).get('anomaly_score', 0)
+        adjustments.append(anomaly_score / 3)  # 0-33 points
+        
+        # Average adjustment
+        final_adjustment = sum(adjustments) / len(adjustments) if adjustments else 0
+        return round(final_adjustment, 2)
+
+
 class RiskScorer:
     """
     Calculate login risk score based on multiple factors:
@@ -46,12 +395,13 @@ class RiskScorer:
                       fingerprint: str, ip_address: str, 
                       browser: str, os: str) -> Dict:
         """
-        Main risk calculation function
-        Returns dict with risk_score, level, factors, and recommendation
+        Main risk calculation function with predictive analysis
+        Returns dict with risk_score, level, factors, prediction, and recommendation
         """
         
         risk_score = 0
         risk_factors = {}
+        predictive_data = {}
         
         if user_id:
             # Check fingerprint match
@@ -78,6 +428,31 @@ class RiskScorer:
             concurrent_risk, concurrent_details = self._check_concurrent_logins(user_id)
             risk_score += concurrent_risk * (self.WEIGHTS['concurrent_login'] / 100)
             risk_factors['concurrent_logins'] = concurrent_details
+            
+            # PREDICTIVE ANALYSIS: Analyze historical patterns
+            analyzer = PredictiveRiskAnalyzer(self.db)
+            pattern_analysis = analyzer.analyze_fingerprint_pattern(
+                user_id, fingerprint, ip_address
+            )
+            risk_adjustment = analyzer.predict_risk_adjustment(pattern_analysis)
+            
+            # Apply prediction adjustment
+            original_score = risk_score
+            risk_score = min(100, max(0, risk_score + risk_adjustment))
+            
+            # Store predictive data
+            predictive_data = {
+                'fingerprint_pattern': pattern_analysis.get('fingerprint_frequency', {}),
+                'ip_pattern': pattern_analysis.get('ip_pattern', {}),
+                'device_reliability': pattern_analysis.get('device_reliability', {}),
+                'ip_reliability': pattern_analysis.get('ip_reliability', {}),
+                'anomalies': pattern_analysis.get('anomaly_score', {}),
+                'trusted_combo': pattern_analysis.get('trusted_combination', {}),
+                'risk_adjustment': risk_adjustment,
+                'original_risk_score': round(original_score, 2),
+                'adjusted_risk_score': round(risk_score, 2)
+            }
+            risk_factors['predictive_analysis'] = predictive_data
         
         # Check failed attempts
         failed_risk, failed_details = self._check_failed_attempts(username, ip_address)
@@ -97,6 +472,7 @@ class RiskScorer:
             'risk_score': round(risk_score, 2),
             'risk_level': risk_level,
             'factors': risk_factors,
+            'predictive_data': predictive_data,
             'recommendation': recommendation,
             'requires_challenge': risk_level in ['medium', 'high']
         }

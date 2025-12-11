@@ -9,6 +9,7 @@ from typing import Optional
 
 from flask import Flask, g, redirect, render_template, request, session, url_for, jsonify, send_file, abort
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
 
 from security import RiskScorer, FingerprintManager, SecurityLogger, create_jwt_token
 
@@ -22,6 +23,9 @@ app.config["DOCTOR_VERIFY_KEY"] = os.environ.get("DOCTOR_VERIFY_KEY", "doctor@20
 app.config["DOCTOR_ACCESS_KEY"] = os.environ.get("DOCTOR_ACCESS_KEY", "secure@doc")  # Doctor access verification key
 app.config["PATIENT_DETAILS_KEY"] = os.environ.get("PATIENT_DETAILS_KEY", "details@verify")  # Patient details access key
 app.config["DELETE_USER_KEY"] = os.environ.get("DELETE_USER_KEY", "delete@user")  # User deletion confirmation key
+app.config["REPORT_UPLOAD_KEY"] = os.environ.get("REPORT_UPLOAD_KEY", "report@upload")  # Per-upload report access key
+app.config["REPORTS_FOLDER"] = str(BASE_DIR / "uploaded_reports")
+app.config["REPORT_DOWNLOAD_KEY"] = os.environ.get("REPORT_DOWNLOAD_KEY", "patient@download")  # Patient-side download key
 
 # In-memory placeholders for prescriptions and reports (demo only).
 PRESCRIPTIONS_STORE = []  # each: {"id": int, "patient_id": int, "doctor": str, "medication": str, "notes": str, "date": str}
@@ -601,6 +605,68 @@ def admin_dashboard():
     )
 
 
+@app.route("/security-audit", methods=["GET"])
+@require_role("admin")
+def security_audit():
+    """
+    Security audit dashboard showing login attempts and risk analysis
+    """
+    if not session.get("admin_key_verified"):
+        return redirect(url_for("admin_key_entry"))
+    
+    db = get_db()
+    security_logger = SecurityLogger(db)
+    
+    # Get security logs
+    all_security_logs = security_logger.get_security_logs(limit=200)
+    
+    # Get login attempts with risk analysis
+    cursor = db.cursor()
+    cursor.execute("""
+        SELECT * FROM login_attempts 
+        ORDER BY timestamp DESC LIMIT 200
+    """)
+    login_attempts = [dict(row) for row in cursor.fetchall()]
+    
+    # Calculate statistics
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful,
+            SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failed,
+            AVG(risk_score) as avg_risk,
+            MAX(risk_score) as max_risk
+        FROM login_attempts 
+        WHERE timestamp > datetime('now', '-24 hours')
+    """)
+    stats_24h = dict(cursor.fetchone())
+    
+    # High risk events in 24h
+    cursor.execute("""
+        SELECT COUNT(*) as count FROM login_attempts 
+        WHERE risk_score > 60 AND timestamp > datetime('now', '-24 hours')
+    """)
+    high_risk_24h = cursor.fetchone()['count']
+    
+    # Get device fingerprints
+    cursor.execute("""
+        SELECT COUNT(DISTINCT fingerprint) as total_devices,
+               COUNT(CASE WHEN is_trusted = 1 THEN 1 END) as trusted
+        FROM device_fingerprints
+    """)
+    device_stats = dict(cursor.fetchone())
+    
+    return render_template(
+        "security_audit.html",
+        user=session.get("user"),
+        security_logs=all_security_logs,
+        login_attempts=login_attempts,
+        stats_24h=stats_24h,
+        high_risk_24h=high_risk_24h,
+        device_stats=device_stats
+    )
+
+
 @app.route("/delete-user/<int:user_id>", methods=["GET", "POST"])
 @require_role("admin")
 def delete_user_key_entry(user_id):
@@ -744,6 +810,49 @@ def view_patient_details(patient_id):
     )
 
 
+@app.route('/report-key/<int:report_id>', methods=['GET', 'POST'])
+@require_role('patient')
+def report_key_entry(report_id: int):
+    """
+    Patient must enter the report download key to download a report.
+    """
+    user = session.get('user')
+    if not user:
+        return redirect(url_for('login'))
+
+    # Find report and verify ownership
+    rep = next((r for r in REPORTS_STORE if r['id'] == report_id), None)
+    if not rep or rep['patient_id'] != _get_patient_id(user['username']):
+        abort(404)
+
+    error_message = None
+    if request.method == 'POST':
+        entered_key = request.form.get('report_download_key', '').strip()
+        if entered_key == app.config.get('REPORT_DOWNLOAD_KEY'):
+            # Log verification
+            db = get_db()
+            security_logger = SecurityLogger(db)
+            patient_id = _get_patient_id(user['username'])
+            security_logger.log_security_event(
+                user['username'], patient_id, 'report_download_verified', 'low', request.remote_addr, None,
+                {'report_id': report_id}
+            )
+
+            return redirect(url_for('download_report', report_id=report_id, _key=entered_key))
+        else:
+            error_message = '❌ Incorrect download access key. Access denied.'
+            # Log failed attempt
+            db = get_db()
+            security_logger = SecurityLogger(db)
+            patient_id = _get_patient_id(user['username'])
+            security_logger.log_security_event(
+                user['username'], patient_id, 'failed_report_download_key', 'medium', request.remote_addr, None,
+                {'report_id': report_id}
+            )
+
+    return render_template('patient_report_key_entry.html', user=user, report_title=rep.get('title', rep.get('filename')), report_id=report_id, error_message=error_message)
+
+
 @app.route("/doctor")
 @require_role("doctor")
 def doctor_dashboard():
@@ -784,13 +893,14 @@ def doctor_dashboard():
         user=session.get("user"),
         patients=patients,
         reports=reports,
+        upload_error=session.pop("upload_error", None),
+        upload_success=session.pop("upload_success", None),
     )
 
 
 @app.route("/patient")
 @require_role("patient")
 def patient_dashboard():
-    records = []
     user = session.get("user")
     patient_id = _get_patient_id(user["username"]) if user else -1
     # Filter prescriptions and reports for this patient
@@ -847,7 +957,6 @@ def patient_dashboard():
     return render_template(
         "patient_dashboard.html",
         user=session.get("user"),
-        records=records,
         prescriptions=patient_prescriptions,
         reports=patient_reports,
         doctors=doctors,
@@ -1048,27 +1157,92 @@ def upload_report():
     """
     user = session.get("user")
     if user:
-        log_action(user["username"], user["role"], "upload_report", request.path)
+        log_action(user["username"], user["role"], "upload_report_attempt", request.path)
+
+    # Require doctor access key (per-upload)
+    if not session.get("doctor_key_verified"):
+        return redirect(url_for("doctor_key_entry"))
+
+    report_key = request.form.get("report_access_key", "").strip()
+    if report_key != app.config.get("REPORT_UPLOAD_KEY"):
+        # Log and notify
+        db = get_db()
+        security_logger = SecurityLogger(db)
+        doctor_id = _get_user_id(user["username"]) if user else None
+        security_logger.log_security_event(
+            user["username"] if user else "unknown",
+            doctor_id,
+            "failed_report_upload_key",
+            "medium",
+            request.remote_addr,
+            None,
+            {"reason": "invalid_report_access_key"}
+        )
+        session["upload_error"] = "❌ Incorrect report access key. Upload denied."
+        return redirect(url_for("doctor_dashboard"))
+
     patient_id = request.form.get("patient_id")
     file = request.files.get("report_file")
+
+    # Basic validation
+    if not file or file.filename == "":
+        session["upload_error"] = "No file selected for upload."
+        return redirect(url_for("doctor_dashboard"))
+
+    # Allowed extensions
+    allowed_ext = {"pdf", "jpg", "jpeg", "png"}
+    filename = secure_filename(file.filename)
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    if ext not in allowed_ext:
+        session["upload_error"] = "File type not allowed. Allowed: pdf, jpg, png."
+        return redirect(url_for("doctor_dashboard"))
+
+    # Ensure upload folder exists
+    upload_folder = Path(app.config.get("REPORTS_FOLDER"))
+    upload_folder.mkdir(parents=True, exist_ok=True)
+
+    # Save file securely
+    safe_name = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}_{user['username'] if user else 'unknown'}_{filename}"
+    save_path = upload_folder / safe_name
+    try:
+        file.save(str(save_path))
+    except Exception:
+        session["upload_error"] = "Failed to save file. Try again." 
+        return redirect(url_for("doctor_dashboard"))
+
     global REPORT_COUNTER
     try:
         pid = int(patient_id)
-        filename = file.filename if file else "report.pdf"
         REPORTS_STORE.append(
             {
                 "id": REPORT_COUNTER,
                 "patient_id": pid,
                 "doctor": user["username"] if user else "doctor",
                 "title": filename,
-                "filename": filename,
+                "filename": safe_name,
                 "date": datetime.now(timezone.utc).isoformat(),
                 "flag": "normal",
+                "path": str(save_path)
             }
         )
         REPORT_COUNTER += 1
+        # Log success
+        db = get_db()
+        security_logger = SecurityLogger(db)
+        doctor_id = _get_user_id(user["username"]) if user else None
+        security_logger.log_security_event(
+            user["username"] if user else "unknown",
+            doctor_id,
+            "report_uploaded",
+            "low",
+            request.remote_addr,
+            None,
+            {"patient_id": pid, "filename": safe_name}
+        )
+        session["upload_success"] = "✅ Report uploaded securely."
     except (TypeError, ValueError):
-        pass
+        session["upload_error"] = "Invalid patient selected."
+
     return redirect(url_for("doctor_dashboard"))
 
 
@@ -1088,14 +1262,29 @@ def view_report(report_id: int):
 @require_role("patient")
 def download_report(report_id: int):
     """
-    Placeholder secure download for patient reports.
+    Secure download for patient reports - requires key every time.
     """
     user = session.get("user")
     rep = next((r for r in REPORTS_STORE if r["id"] == report_id), None)
     if not rep or not user or rep["patient_id"] != _get_patient_id(user["username"]):
         abort(404)
+
+    # Always require key verification - redirect to key entry
+    key = request.args.get('_key', '').strip()
+    if not key or key != app.config.get('REPORT_DOWNLOAD_KEY'):
+        # Redirect to key entry page
+        return redirect(url_for("report_key_entry", report_id=report_id))
+
+    # Serve the downloaded file if path exists (fallback to placeholder)
+    file_path = rep.get("path")
     log_action(user["username"], user["role"], "download_report", request.path)
-    # Return a simple text payload to simulate download
+    if file_path:
+        try:
+            return send_file(file_path, as_attachment=True, download_name=rep.get('title', rep.get('filename')))
+        except Exception:
+            # Fallback text if send_file fails
+            return f"Report {report_id} ({rep['filename']}) download is not available.", 200
+
     return f"Report {report_id} ({rep['filename']}) download is not implemented.", 200
 
 

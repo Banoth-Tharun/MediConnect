@@ -116,7 +116,7 @@ Doctors can see appointments with their patients:
 ## HOW TO ADD MORE DOCTORS
 
 ### Through Admin Dashboard:
-1. Log in as admin (username: admin1, password: password@123)
+1. Log in as admin (username: Tharun Admin, password: password@123)
 2. In Admin Dashboard, go to "Add Doctor" section
 3. Enter:
    - Doctor username
@@ -174,7 +174,7 @@ Doctors can see appointments with their patients:
 ## TEST CREDENTIALS
 
 ### Admin:
-- Username: admin1
+- Username: Tharun Admin
 - Password: password@123
 
 ### Doctor:

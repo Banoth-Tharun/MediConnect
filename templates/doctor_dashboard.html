@@ -118,6 +118,16 @@ footer { text-align: center; padding: 20px; color: var(--muted); font-size: 14px
         <!-- Reports Section -->
         <div id="reports" class="content-section">
             <h3>Upload / View Reports</h3>
+            {% if upload_error %}
+            <div style="background:#fee2e2;border-left:4px solid #ef4444;padding:10px;border-radius:6px;margin-bottom:12px;color:#7f1d1d;">
+                {{ upload_error }}
+            </div>
+            {% endif %}
+            {% if upload_success %}
+            <div style="background:#ecfdf5;border-left:4px solid #10b981;padding:10px;border-radius:6px;margin-bottom:12px;color:#064e3b;">
+                {{ upload_success }}
+            </div>
+            {% endif %}
             <form method="POST" action="{{ url_for('upload_report') }}" enctype="multipart/form-data">
                 <label>Select Patient:</label>
                 <select name="patient_id" required>
@@ -128,6 +138,9 @@ footer { text-align: center; padding: 20px; color: var(--muted); font-size: 14px
 
                 <label>Upload Report:</label>
                 <input type="file" name="report_file" accept=".pdf,.jpg,.png" required>
+
+                <label>Access Key (required):</label>
+                <input type="password" name="report_access_key" placeholder="Enter report access key" required>
 
                 <button type="submit" class="submit-btn">Upload Report</button>
             </form>
