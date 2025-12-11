@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Appointment Requests - Doctor Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f3f4f6;
+            --card: #ffffff;
+            --primary: #1d4ed8;
+            --text: #0f172a;
+            --muted: #475569;
+            --shadow: 0 8px 24px rgba(0,0,0,0.08);
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: "Inter", Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+        a { color: var(--primary); text-decoration: none; }
+        header { background: #fff; padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow); }
+        header .title { font-size: 22px; font-weight: 700; }
+        header .profile { display: flex; align-items: center; gap: 14px; }
+        header .avatar { width: 46px; height: 46px; border-radius: 50%; background: #e0e7ff; display: grid; place-items: center; font-weight: 700; color: #4338ca; }
+        .status { padding: 6px 12px; border-radius: 999px; background: rgba(34,197,94,0.2); color: #22c55e; font-size: 12px; font-weight: 700; }
+        main { padding: 28px; max-width: 1200px; margin: 0 auto; }
+        .card { background: var(--card); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); margin-bottom: 20px; }
+        .card h3 { margin: 0 0 20px; font-size: 20px; font-weight: 700; }
+        .appointment-request { border: 2px solid #e5e7eb; border-radius: 12px; padding: 20px; margin-bottom: 16px; transition: all 0.3s; }
+        .appointment-request:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .appointment-request.pending { border-left: 4px solid var(--warning); }
+        .appointment-request.approved { border-left: 4px solid var(--success); }
+        .appointment-request.rejected { border-left: 4px solid var(--danger); opacity: 0.7; }
+        .header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+        .patient-info h4 { margin: 0; font-size: 16px; }
+        .patient-meta { font-size: 13px; color: var(--muted); margin-top: 4px; }
+        .appointment-time { font-size: 14px; font-weight: 600; color: var(--primary); }
+        .appointment-reason { margin: 12px 0; padding: 12px; background: #f9fafb; border-left: 3px solid var(--primary); border-radius: 6px; font-size: 14px; }
+        .appointment-reason strong { display: block; margin-bottom: 6px; }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .status-badge.pending { background: #fef3c7; color: #92400e; }
+        .status-badge.approved { background: #d1fae5; color: #065f46; }
+        .status-badge.rejected { background: #fee2e2; color: #991b1b; }
+        .actions { display: flex; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb; }
+        .btn { padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-size: 14px; transition: 0.2s; }
+        .btn-approve { background: var(--success); color: white; }
+        .btn-approve:hover { background: #059669; }
+        .btn-reject { background: var(--danger); color: white; }
+        .btn-reject:hover { background: #dc2626; }
+        .btn-back { background: #e5e7eb; color: var(--text); text-decoration: none; }
+        .btn-back:hover { background: #d1d5db; }
+        .no-appointments { text-align: center; padding: 40px 20px; color: var(--muted); }
+        .no-appointments i { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+        footer { text-align: center; padding: 20px; color: var(--muted); font-size: 14px; }
+        @media (max-width: 640px) { header { flex-direction: column; align-items: flex-start; gap: 10px; } .actions { flex-direction: column; } }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="title">📋 Appointment Requests</div>
+        <div class="profile">
+            <div class="avatar">{{ user.username[:2]|upper }}</div>
+            <div>
+                <div><strong>{{ user.username }}</strong> ({{ user.role }})</div>
+                <div style="font-size:12px; opacity:0.85;">Doctor Dashboard</div>
+            </div>
+            <span class="status">Online</span>
+            <a href="{{ url_for('logout') }}" style="color:#1d4ed8; font-weight:600;">Logout</a>
+        </div>
+    </header>
+
+    <main>
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="margin: 0;">Appointment Requests</h3>
+                <a href="{{ url_for('doctor_dashboard') }}" class="btn btn-back">← Back to Dashboard</a>
+            </div>
+
+            {% if appointments %}
+                {% set pending_count = appointments|selectattr('status', 'equalto', 'pending')|list|length %}
+                {% set approved_count = appointments|selectattr('status', 'equalto', 'approved')|list|length %}
+                {% set rejected_count = appointments|selectattr('status', 'equalto', 'rejected')|list|length %}
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px;">
+                    <div style="background: #fef3c7; padding: 12px; border-radius: 8px; text-align: center;">
+                        <div style="font-weight: 600; color: #92400e;">{{ pending_count }}</div>
+                        <div style="font-size: 12px; color: #78350f;">Pending</div>
+                    </div>
+                    <div style="background: #d1fae5; padding: 12px; border-radius: 8px; text-align: center;">
+                        <div style="font-weight: 600; color: #065f46;">{{ approved_count }}</div>
+                        <div style="font-size: 12px; color: #064e3b;">Approved</div>
+                    </div>
+                    <div style="background: #fee2e2; padding: 12px; border-radius: 8px; text-align: center;">
+                        <div style="font-weight: 600; color: #991b1b;">{{ rejected_count }}</div>
+                        <div style="font-size: 12px; color: #7f1d1d;">Rejected</div>
+                    </div>
+                </div>
+
+                {% for appointment in appointments %}
+                <div class="appointment-request {{ appointment.status }}">
+                    <div class="header-row">
+                        <div class="patient-info">
+                            <h4>{{ appointment.patient_name }}</h4>
+                            <div class="patient-meta">Username: <strong>{{ appointment.patient_username }}</strong></div>
+                            <div class="patient-meta">Email: <strong>{{ appointment.patient_email }}</strong></div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div class="appointment-time">
+                                📅 {{ appointment.scheduled_at | replace('T', ' ') }}
+                            </div>
+                            <div style="margin-top: 8px;">
+                                <span class="status-badge {{ appointment.status }}">
+                                    {{ appointment.status|title }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if appointment.reason %}
+                    <div class="appointment-reason">
+                        <strong>Reason for Appointment:</strong>
+                        {{ appointment.reason }}
+                    </div>
+                    {% endif %}
+
+                    {% if appointment.status == 'pending' %}
+                    <div class="actions">
+                        <form method="POST" action="{{ url_for('approve_appointment', appointment_id=appointment.id) }}" style="flex: 1;">
+                            <button type="submit" class="btn btn-approve" style="width: 100%;">✓ Approve Appointment</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('reject_appointment', appointment_id=appointment.id) }}" style="flex: 1;">
+                            <button type="submit" class="btn btn-reject" style="width: 100%;">✗ Reject Appointment</button>
+                        </form>
+                    </div>
+                    {% else %}
+                    <div style="padding-top: 16px; border-top: 1px solid #e5e7eb; color: var(--muted); font-size: 14px;">
+                        Status: <strong>{{ appointment.status|title }}</strong> on {{ appointment.created_at | replace('T', ' ') | truncate(16, true, '') }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="no-appointments">
+                <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
+                <h4>No appointment requests yet</h4>
+                <p>Patients will appear here when they book appointments with you.</p>
+                <a href="{{ url_for('doctor_dashboard') }}" class="btn btn-back" style="display: inline-block; margin-top: 16px;">← Back to Dashboard</a>
+            </div>
+            {% endif %}
+        </div>
+    </main>
+
+    <footer>
+        MedConnect • Doctor Appointment Management
+    </footer>
+</body>
+</html>

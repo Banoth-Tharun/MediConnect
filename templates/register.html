@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Registration</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+        .container { width: 100%; max-width: 500px; }
+        .card { background: #fff; padding: 40px; border-radius: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { font-size: 28px; color: #333; margin-bottom: 8px; }
+        .header p { color: #666; font-size: 14px; }
+        .form-group { margin-bottom: 18px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .form-row .form-group { margin-bottom: 0; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: #333; font-size: 14px; }
+        input { width: 100%; padding: 12px 14px; border: 2px solid #e5e7eb; border-radius: 6px; font-size: 14px; transition: border-color 0.3s; }
+        input:focus { outline: none; border-color: #667eea; background-color: #f8f9ff; }
+        .error-message { color: #dc2626; margin-top: 8px; font-size: 13px; }
+        .form-alert { background-color: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 12px 14px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; }
+        button { width: 100%; padding: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.2s; margin-top: 10px; }
+        button:hover { transform: translateY(-2px); }
+        .footer { text-align: center; margin-top: 20px; }
+        .footer a { color: #667eea; text-decoration: none; font-weight: 600; }
+        .footer a:hover { text-decoration: underline; }
+        .password-requirements { background-color: #f0f9ff; border: 1px solid #bfdbfe; padding: 12px 14px; border-radius: 6px; margin-top: 15px; font-size: 12px; color: #1e40af; }
+        .password-requirements ul { margin-left: 20px; margin-top: 8px; }
+        .password-requirements li { margin-bottom: 4px; }
+        .success-badge { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-bottom: 20px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>Register as Patient</h1>
+                <p>Join our Medical Care platform in just 2 minutes</p>
+            </div>
+
+            {% if error %}
+                <div class="form-alert">{{ error }}</div>
+            {% endif %}
+
+            <form method="post" onsubmit="return validateForm()">
+                <!-- First Name and Last Name Row -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="first_name">First Name *</label>
+                        <input type="text" id="first_name" name="first_name" required placeholder="John" value="{{ request.form.get('first_name', '') }}">
+                        <div class="error-message" id="first_name_error"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="last_name">Last Name *</label>
+                        <input type="text" id="last_name" name="last_name" required placeholder="Doe" value="{{ request.form.get('last_name', '') }}">
+                        <div class="error-message" id="last_name_error"></div>
+                    </div>
+                </div>
+
+                <!-- Username -->
+                <div class="form-group">
+                    <label for="username">Username *</label>
+                    <input type="text" id="username" name="username" required placeholder="johndoe123" value="{{ request.form.get('username', '') }}">
+                    <div class="error-message" id="username_error"></div>
+                </div>
+
+                <!-- Email -->
+                <div class="form-group">
+                    <label for="email">Email Address *</label>
+                    <input type="email" id="email" name="email" required placeholder="john@example.com" value="{{ request.form.get('email', '') }}">
+                    <div class="error-message" id="email_error"></div>
+                </div>
+
+                <!-- Password -->
+                <div class="form-group">
+                    <label for="password">Password *</label>
+                    <input type="password" id="password" name="password" required placeholder="Enter a strong password">
+                    <div class="password-requirements">
+                        <strong>Password must have:</strong>
+                        <ul>
+                            <li>At least 6 characters</li>
+                            <li>Mix of uppercase and lowercase letters</li>
+                            <li>At least one number</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Confirm Password -->
+                <div class="form-group">
+                    <label for="confirm_password">Confirm Password *</label>
+                    <input type="password" id="confirm_password" name="confirm_password" required placeholder="Re-enter your password">
+                    <div class="error-message" id="confirm_password_error"></div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit">Create Account & Verify Email</button>
+
+                <div class="footer">
+                    Already have an account? <a href="{{ url_for('login') }}">Sign in here</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function validateForm() {
+            // Clear previous errors
+            document.getElementById('first_name_error').textContent = '';
+            document.getElementById('last_name_error').textContent = '';
+            document.getElementById('username_error').textContent = '';
+            document.getElementById('email_error').textContent = '';
+            document.getElementById('confirm_password_error').textContent = '';
+
+            const firstName = document.getElementById('first_name').value.trim();
+            const lastName = document.getElementById('last_name').value.trim();
+            const username = document.getElementById('username').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+
+            let isValid = true;
+
+            // Validate first name
+            if (!firstName) {
+                document.getElementById('first_name_error').textContent = 'First name is required';
+                isValid = false;
+            } else if (firstName.length < 2) {
+                document.getElementById('first_name_error').textContent = 'First name must be at least 2 characters';
+                isValid = false;
+            }
+
+            // Validate last name
+            if (!lastName) {
+                document.getElementById('last_name_error').textContent = 'Last name is required';
+                isValid = false;
+            } else if (lastName.length < 2) {
+                document.getElementById('last_name_error').textContent = 'Last name must be at least 2 characters';
+                isValid = false;
+            }
+
+            // Validate username
+            if (!username) {
+                document.getElementById('username_error').textContent = 'Username is required';
+                isValid = false;
+            } else if (username.length < 4) {
+                document.getElementById('username_error').textContent = 'Username must be at least 4 characters';
+                isValid = false;
+            }
+
+            // Validate email
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!email) {
+                document.getElementById('email_error').textContent = 'Email is required';
+                isValid = false;
+            } else if (!emailRegex.test(email)) {
+                document.getElementById('email_error').textContent = 'Please enter a valid email address';
+                isValid = false;
+            }
+
+            // Validate password
+            if (password.length < 6) {
+                document.getElementById('password_error').textContent = 'Password must be at least 6 characters';
+                isValid = false;
+            }
+
+            // Validate confirm password
+            if (password !== confirmPassword) {
+                document.getElementById('confirm_password_error').textContent = 'Passwords do not match';
+                isValid = false;
+            }
+
+            return isValid;
+        }
+
+        // Real-time validation for username
+        document.getElementById('username').addEventListener('input', function() {
+            if (this.value.length < 4 && this.value.length > 0) {
+                document.getElementById('username_error').textContent = 'Username must be at least 4 characters';
+            } else {
+                document.getElementById('username_error').textContent = '';
+            }
+        });
+
+        // Real-time validation for email
+        document.getElementById('email').addEventListener('input', function() {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (this.value && !emailRegex.test(this.value)) {
+                document.getElementById('email_error').textContent = 'Invalid email format';
+            } else {
+                document.getElementById('email_error').textContent = '';
+            }
+        });
+
+        // Real-time validation for password match
+        document.getElementById('confirm_password').addEventListener('input', function() {
+            if (this.value && this.value !== document.getElementById('password').value) {
+                document.getElementById('confirm_password_error').textContent = 'Passwords do not match';
+            } else {
+                document.getElementById('confirm_password_error').textContent = '';
+            }
+        });
+    </script>
+</body>
+</html>

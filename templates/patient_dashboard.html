@@ -1,0 +1,211 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">
+    <i class="bi bi-person-circle me-2"></i>My Health — Patient Dashboard
+  </h2>
+  <div>
+    <small class="text-muted">Welcome, {{ user.username }}</small>
+  </div>
+</div>
+
+<!-- Quick action toggles -->
+<div class="mb-4">
+  <div class="d-flex gap-2 flex-wrap">
+    <button class="btn btn-outline-primary toggle-btn active" data-target="records">Medical Records</button>
+    <button class="btn btn-outline-primary toggle-btn" data-target="prescriptions">Prescriptions</button>
+    <button class="btn btn-outline-primary toggle-btn" data-target="reports">Lab Results</button>
+    <button class="btn btn-outline-primary toggle-btn" data-target="appointments">Book Appointments</button>
+  </div>
+</div>
+
+<div class="card mb-4 p-4">
+
+  <!-- Medical Records -->
+  <div id="records" class="content-section visible">
+    <h5 class="card-title"><i class="bi bi-file-medical me-2"></i>Medical Records</h5>
+    <p class="text-muted small mb-3">Your personal medical history.</p>
+
+    {% if records %}
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Title</th>
+          <th>Summary</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td>{{ r.date.strftime('%Y-%m-%d') }}</td>
+          <td>{{ r.title }}</td>
+          <td>{{ r.summary }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="text-center py-4 text-muted">
+      <i class="bi bi-inbox me-2"></i>No medical records available.
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Prescriptions -->
+  <div id="prescriptions" class="content-section">
+    <h5 class="card-title"><i class="bi bi-prescription2 me-2"></i>Prescriptions</h5>
+    <p class="text-muted small mb-3">Active and past prescriptions.</p>
+
+    {% if prescriptions %}
+    <ul class="list-group">
+      {% for p in prescriptions %}
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <div>
+          <strong>{{ p.medication }}</strong>
+          <div class="small text-muted">Prescribed on: {{ p.prescribed_on.strftime('%Y-%m-%d') }} — Dr. {{ p.doctor }}</div>
+          {% if p.notes %}
+          <div class="small mt-1">Notes: {{ p.notes }}</div>
+          {% endif %}
+        </div>
+        <div>
+          <a href="{{ url_for('download_prescription', prescription_id=p.id) }}" class="btn btn-sm btn-outline-secondary">Download</a>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="text-center py-4 text-muted">
+      <i class="bi bi-inbox me-2"></i>No prescriptions found.
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Lab Results / Reports -->
+  <div id="reports" class="content-section">
+    <h5 class="card-title"><i class="bi bi-beaker me-2"></i>Lab Results & Reports</h5>
+    <p class="text-muted small mb-3">View your latest lab results and scanned reports.</p>
+
+    {% if reports %}
+    <div class="row g-3">
+      {% for rep in reports %}
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+              <strong>{{ rep.title }}</strong>
+              <div class="small text-muted">{{ rep.date.strftime('%Y-%m-%d') }} — {{ rep.type }}</div>
+            </div>
+            <span class="badge text-bg-{{ 'danger' if rep.flag=='high' else 'warning' if rep.flag=='medium' else 'success' }}">
+              {{ rep.flag|capitalize if rep.flag else 'Normal' }}
+            </span>
+          </div>
+          <p class="mb-2 small">{{ rep.summary }}</p>
+          <div class="d-flex gap-2">
+            <a href="{{ rep.view_url }}" class="btn btn-sm btn-outline-primary">View Report</a>
+            <a href="{{ rep.download_url }}" class="btn btn-sm btn-outline-secondary">Download PDF</a>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-4 text-muted">
+      <i class="bi bi-inbox me-2"></i>No lab results yet.
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Book Appointments -->
+  <div id="appointments" class="content-section">
+    <h5 class="card-title"><i class="bi bi-calendar-check me-2"></i>Book Appointments</h5>
+    <p class="text-muted small mb-3">Select a doctor and time slot.</p>
+
+    <div class="row mb-4">
+      {% for d in doctors %}
+      <div class="col-md-4">
+        <div class="doctor-card border rounded p-3 mb-3">
+          <h6>{{ d.display_name or d.username }}</h6>
+          <p class="small text-muted mb-1">{{ d.specialty }}</p>
+          <p class="small">Experience: {{ d.experience }} yrs</p>
+          <small class="text-muted">ID: {{ d.id }}</small>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Quick book form -->
+    <form class="row g-2 mb-4" method="post" action="{{ url_for('book_appointment') }}">
+      <div class="col-md-4">
+        <label class="form-label small">Select Doctor</label>
+        <select name="doctor_id" class="form-select" required>
+          {% for d in doctors %}
+          <option value="{{ d.id }}">{{ d.display_name or d.username }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Date</label>
+        <input type="date" name="date" class="form-control" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Time</label>
+        <input type="time" name="time" class="form-control" required>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-primary mt-1" type="submit">Book</button>
+      </div>
+    </form>
+
+    <!-- Upcoming Appointments -->
+    <h6>Upcoming Appointments</h6>
+    {% if appointments %}
+    <ul class="list-group">
+      {% for a in appointments %}
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <div>
+          <strong>{{ a.doctor_name }}</strong>
+          <div class="small text-muted">{{ a.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        </div>
+        <a href="{{ url_for('cancel_appointment', appointment_id=a.id) }}" class="btn btn-sm btn-outline-danger">Cancel</a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="text-center py-4 text-muted">
+      <i class="bi bi-calendar-x me-2"></i>No upcoming appointments.
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const buttons = document.querySelectorAll('.toggle-btn');
+  const sections = document.querySelectorAll('.content-section');
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      sections.forEach(s => s.classList.remove('visible'));
+      const target = document.getElementById(btn.dataset.target);
+      if(target) target.classList.add('visible');
+      target.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
+});
+</script>
+
+<style>
+.content-section { display: none; }
+.content-section.visible { display: block; }
+.toggle-btn.active { background:#0d6efd; color:#fff; }
+.doctor-card:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.1); }
+</style>
+
+{% endblock %}
+

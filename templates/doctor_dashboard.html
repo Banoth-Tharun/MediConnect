@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doctor Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #f3f4f6;
+    --card: #ffffff;
+    --primary: #1d4ed8;
+    --text: #0f172a;
+    --muted: #475569;
+    --shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+* { box-sizing: border-box; }
+body { font-family: "Inter", Arial, sans-serif; margin:0; background: var(--bg); color: var(--text); }
+a { color: var(--primary); text-decoration: none; }
+header { background: #fff; padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow); }
+header .title { font-size: 22px; font-weight: 700; }
+header .profile { display: flex; align-items: center; gap: 14px; }
+header .avatar { width: 46px; height: 46px; border-radius: 50%; background: #e0e7ff; display: grid; place-items: center; font-weight: 700; color: #4338ca; }
+.status { padding: 6px 12px; border-radius: 999px; background: rgba(34,197,94,0.2); color: #22c55e; font-size: 12px; font-weight: 700; }
+main { padding: 28px; max-width: 1400px; margin: 0 auto; }
+.card { background: var(--card); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); margin-bottom: 20px; }
+.card h3 { margin: 0 0 16px; font-size: 20px; font-weight: 700; }
+.toggle-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+.toggle-btn { padding: 10px 18px; border-radius: 8px; border: none; background: #e4e9ff; cursor: pointer; font-size: 15px; transition: 0.2s; }
+.toggle-btn:hover { background: #d3d9ff; }
+.toggle-btn.active { background: #1d4ed8; color: #fff; }
+.content-section { display: none; padding: 20px; background: #ffffff; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+.content-section.visible { display: block; }
+table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+table th, table td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+table th { background: #f0f4ff; font-weight: 600; }
+button.submit-btn { padding: 10px 18px; border: none; background: var(--primary); color: #fff; border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.2s; }
+button.submit-btn:hover { background: #4338ca; }
+input, select, textarea { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; margin-bottom: 12px; font-size: 15px; }
+footer { text-align: center; padding: 20px; color: var(--muted); font-size: 14px; }
+@media (max-width: 640px) { header { flex-direction: column; align-items: flex-start; gap: 10px; } }
+</style>
+</head>
+
+<body>
+
+<header>
+    <div class="title">MedConnect • Doctor Dashboard</div>
+    <div class="profile">
+        <div class="avatar">{{ user.username[:2]|upper }}</div>
+        <div>
+            <div><strong>{{ user.username }}</strong> ({{ user.role }})</div>
+            <div style="font-size:12px; opacity:0.85;">Cardiologist • Last login: just now</div>
+        </div>
+        <span class="status">Online</span>
+        <a href="{{ url_for('logout') }}" style="color:#1d4ed8; font-weight:600;">Logout</a>
+    </div>
+</header>
+
+<main>
+    <section class="card">
+        <h3>Quick Actions</h3>
+        <div class="toggle-actions">
+            <button class="toggle-btn active" data-target="patients">View My Patients</button>
+            <button class="toggle-btn" data-target="prescription">Write Prescription</button>
+            <a href="{{ url_for('doctor_appointments') }}" style="display: inline-block; padding: 10px 18px; border-radius: 8px; background: #10b981; color: white; cursor: pointer; font-weight: 600; text-decoration: none; border: none;">📋 Appointment Requests</a>
+            <button class="toggle-btn" data-target="reports">Upload / View Reports</button>
+        </div>
+
+        <!-- Patients Section -->
+        <div id="patients" class="content-section visible">
+            <h3>My Patients</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>First Name</th>
+                        <th>Last Name</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for patient in patients %}
+                    <tr>
+                        <td>{{ patient.first_name }}</td>
+                        <td>{{ patient.last_name }}</td>
+                        <td>{{ patient.username }}</td>
+                        <td>{{ patient.email }}</td>
+                        <td>
+                            <a href="#" style="color: #1d4ed8; font-weight: 600;">View Details</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5">No patients assigned yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Prescription Section -->
+        <div id="prescription" class="content-section">
+            <h3>Write Prescription</h3>
+            <form method="POST" action="{{ url_for('write_prescription') }}">
+                <label>Patient:</label>
+                <select name="patient_id" required>
+                    {% for patient in patients %}
+                        <option value="{{ patient.id }}">{{ patient.first_name }} {{ patient.last_name }} ({{ patient.username }})</option>
+                    {% endfor %}
+                </select>
+
+                <label>Prescription Details:</label>
+                <textarea name="prescription_text" rows="5" placeholder="Enter prescription here..." required></textarea>
+
+                <button type="submit" class="submit-btn">Save Prescription</button>
+            </form>
+        </div>
+
+        <!-- Reports Section -->
+        <div id="reports" class="content-section">
+            <h3>Upload / View Reports</h3>
+            <form method="POST" action="{{ url_for('upload_report') }}" enctype="multipart/form-data">
+                <label>Select Patient:</label>
+                <select name="patient_id" required>
+                    {% for patient in patients %}
+                        <option value="{{ patient.id }}">{{ patient.first_name }} {{ patient.last_name }} ({{ patient.username }})</option>
+                    {% endfor %}
+                </select>
+
+                <label>Upload Report:</label>
+                <input type="file" name="report_file" accept=".pdf,.jpg,.png" required>
+
+                <button type="submit" class="submit-btn">Upload Report</button>
+            </form>
+
+            <h4>Previously Uploaded Reports</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Patient</th>
+                        <th>Report Name</th>
+                        <th>Date Uploaded</th>
+                        <th>Download</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for report in reports %}
+                    <tr>
+                        <td>{{ report.patient_name }}</td>
+                        <td>{{ report.filename }}</td>
+                        <td>{{ report.uploaded_on }}</td>
+                        <td><a href="{{ url_for('view_report', report_id=report.id) }}">Download</a></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4">No reports uploaded yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<footer>
+    Notification bell • Security monitoring enabled
+</footer>
+
+<script>
+const buttons = document.querySelectorAll(".toggle-btn");
+const sections = document.querySelectorAll(".content-section");
+
+buttons.forEach(btn => {
+    btn.addEventListener("click", () => {
+        buttons.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        sections.forEach(sec => sec.classList.remove("visible"));
+        const target = document.getElementById(btn.dataset.target);
+        if(target) target.classList.add("visible");
+    });
+});
+</script>
+</body>
+</html>
+

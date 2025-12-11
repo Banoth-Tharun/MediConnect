@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doctor Login Verification</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+        .container { width: 100%; max-width: 500px; }
+        .card { background: #fff; padding: 40px; border-radius: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header .icon { font-size: 48px; margin-bottom: 15px; }
+        .header h1 { font-size: 28px; color: #333; margin-bottom: 8px; }
+        .header p { color: #666; font-size: 14px; }
+        .email-display { background-color: #f3f4f6; padding: 15px; border-radius: 6px; margin: 20px 0; text-align: center; }
+        .email-display .email { font-weight: 600; color: #333; font-size: 15px; }
+        .email-display .note { color: #666; font-size: 13px; margin-top: 5px; }
+        .info-box { background-color: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 12px 14px; border-radius: 6px; margin: 20px 0; font-size: 13px; line-height: 1.6; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: #333; font-size: 14px; }
+        .otp-single { width: 100%; padding: 12px 14px; border: 2px solid #e5e7eb; border-radius: 6px; font-size: 18px; letter-spacing: 8px; text-align: center; font-weight: 600; }
+        .otp-single:focus { outline: none; border-color: #667eea; background-color: #f8f9ff; }
+        .error-message { background-color: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 12px 14px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; }
+        button { width: 100%; padding: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.2s; }
+        button:hover { transform: translateY(-2px); }
+        .timer { text-align: center; margin: 20px 0; color: #666; font-size: 13px; }
+        .timer-icon { font-size: 20px; margin-right: 5px; }
+        .footer { text-align: center; margin-top: 20px; }
+        .footer a { color: #667eea; text-decoration: none; font-weight: 600; }
+        .doctor-badge { display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="doctor-badge">🔐 Doctor Secure Login</div>
+            
+            <div class="header">
+                <div class="icon">✉️</div>
+                <h1>Verify Your Identity</h1>
+                <p>Secure OTP verification for doctor login</p>
+            </div>
+
+            <div class="email-display">
+                <div class="email">{{ email }}</div>
+                <div class="note">Verification code sent to this email</div>
+            </div>
+
+            <div class="info-box">
+                <strong>Security Notice:</strong>
+                <ol style="margin-left: 20px; margin-top: 8px;">
+                    <li>Check your email for the OTP code</li>
+                    <li>Enter the 6-digit code below</li>
+                    <li>You'll be logged in securely</li>
+                </ol>
+            </div>
+
+            {% if error %}
+                <div class="error-message">{{ error }}</div>
+            {% endif %}
+
+            <form method="post" onsubmit="return validateOTP()">
+                <div class="form-group">
+                    <label for="otp_code">Enter 6-Digit OTP *</label>
+                    <input type="text" id="otp_code" name="otp_code" class="otp-single" placeholder="000000" maxlength="6" inputmode="numeric" required value="{{ request.form.get('otp_code', '') }}" autocomplete="off">
+                </div>
+
+                <button type="submit">Verify & Continue to Dashboard</button>
+            </form>
+
+            <div class="timer">
+                <span class="timer-icon">⏱️</span>
+                <span>OTP expires in <strong>10 minutes</strong></span>
+            </div>
+
+            <div class="footer">
+                <p style="font-size: 13px; color: #666;">
+                    Having issues? <a href="{{ url_for('login') }}">Return to login</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-focus the input
+        document.getElementById('otp_code').focus();
+
+        // Only allow numbers
+        document.getElementById('otp_code').addEventListener('input', function(e) {
+            this.value = this.value.replace(/[^0-9]/g, '');
+            if (this.value.length === 6) {
+                // Optionally auto-submit when 6 digits are entered
+                // document.querySelector('form').submit();
+            }
+        });
+
+        function validateOTP() {
+            const otp = document.getElementById('otp_code').value.trim();
+            
+            if (!otp) {
+                alert('Please enter the OTP code');
+                return false;
+            }
+            
+            if (otp.length !== 6) {
+                alert('OTP must be 6 digits');
+                return false;
+            }
+            
+            if (!/^\d{6}$/.test(otp)) {
+                alert('OTP must contain only numbers');
+                return false;
+            }
+            
+            return true;
+        }
+    </script>
+</body>
+</html>

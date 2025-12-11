@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f6fa; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .container { display: flex; gap: 20px; }
+        .card { background: #fff; padding: 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); width: 320px; }
+        h1 { margin: 0 0 16px; font-size: 20px; text-align: center; }
+        h2 { margin: 0 0 16px; font-size: 18px; text-align: center; color: #2563eb; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input { width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; margin-top: 16px; padding: 10px; background: #3b82f6; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #2563eb; }
+        .error { color: #b91c1c; margin-top: 12px; text-align: center; font-size: 14px; }
+        .link { text-align: center; margin-top: 16px; font-size: 14px; }
+        .link a { color: #3b82f6; text-decoration: none; }
+        .link a:hover { text-decoration: underline; }
+        .divider { text-align: center; color: #666; margin: 16px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Login Form -->
+        <div class="card">
+            <h1>Login</h1>
+            {% if error %}
+                <div class="error">{{ error }}</div>
+            {% endif %}
+            <form method="post">
+                <label for="username">Username</label>
+                <input id="username" name="username" required>
+
+                <label for="password">Password</label>
+                <input id="password" type="password" name="password" required>
+
+                <button type="submit">Sign In</button>
+            </form>
+            <div class="link">
+                New to our platform? <a href="{{ url_for('register') }}">Register here</a>
+            </div>
+        </div>
+
+        <!-- New User Registration Info -->
+        <div class="card">
+            <h2>New User?</h2>
+            <p style="margin: 12px 0; font-size: 14px; line-height: 1.6; color: #555;">
+                Welcome to our Medical Care platform! As a new user, you can easily register as a patient to:
+            </p>
+            <ul style="margin: 12px 0; font-size: 14px; color: #555; padding-left: 20px;">
+                <li>Book appointments with doctors</li>
+                <li>View prescriptions</li>
+                <li>Access medical reports</li>
+                <li>Manage your health records</li>
+            </ul>
+            <p style="margin: 12px 0; font-size: 14px; color: #2563eb; font-weight: bold;">
+                Registration takes less than 2 minutes!
+            </p>
+            <a href="{{ url_for('register') }}" style="display: block; text-align: center; padding: 10px; background: #10b981; color: white; border-radius: 4px; text-decoration: none; margin-top: 12px; font-weight: bold;">
+                Create Account as Patient
+            </a>
+        </div>
+    </div>
+</body>
+</html>
+
